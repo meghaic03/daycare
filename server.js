@@ -65,7 +65,7 @@ app.post("/whatsapp", async (req, res) => {
     if (actions.length === 0) {
       await send(
         from,
-        `I didn't catch anything I could act on. You can tell me things like:\n"12 kids on Wednesday"\n"Muslima off Thursday"\n"send the schedule"\n"send pay"`
+        `I didn't catch anything I could act on. You can tell me things like:\n"12 kids on Wednesday"\n"MWF I need 3 workers"\n"Muslima off Thursday"\n"send the schedule"\n"send pay"`
       );
       return;
     }

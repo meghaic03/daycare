@@ -5,6 +5,7 @@ const {
   fmtHours,
   fmt12,
   requiredStaff,
+  requiredForDay: requireForDayHelper,
   coverageCheck,
   generateScheduleText,
   generatePayrollText,
@@ -121,6 +122,48 @@ test("applyActions: generate_schedule alone never includes payroll info", () => 
   assert.strictEqual(replies.some((r) => r.kind === "payroll"), false);
 });
 
+test("requiredForDay: falls back to kid-count minimum when no override set", () => {
+  const state = newWeekState("7/20", 1);
+  const day = state.days[0];
+  day.kids = 12;
+  assert.strictEqual(requireForDayHelper(day), 3);
+  day.kids = 5;
+  assert.strictEqual(requireForDayHelper(day), 2);
+});
+
+test("requiredForDay: explicit override wins over kid count", () => {
+  const state = newWeekState("7/20", 1);
+  const day = state.days[0];
+  day.kids = 3; // would normally mean "need 2"
+  day.requiredOverride = 3; // she said directly "I need 3 that day"
+  assert.strictEqual(requireForDayHelper(day), 3);
+});
+
+test("applyActions: set_required_staff sets an override that coverageCheck respects", () => {
+  const state = newWeekState("7/20", 1);
+  const day = state.days[0];
+  day.kids = 0; // no kid count given at all — pure headcount instruction
+  applyActions(state, [{ type: "set_required_staff", date: day.date, count: 3 }]);
+  assert.strictEqual(day.requiredOverride, 3);
+
+  // Only 2 people on duty all day — should now fail, since override demands 3
+  Object.keys(day.shifts).forEach((n) => (day.shifts[n].off = true));
+  day.shifts.Muslima.off = false;
+  day.shifts.Muslima.start = "07:30";
+  day.shifts.Muslima.end = "17:00";
+  day.shifts.Momina.off = false;
+  day.shifts.Momina.start = "07:30";
+  day.shifts.Momina.end = "17:00";
+  const c = coverageCheck(day);
+  assert.strictEqual(c.ok, false);
+});
+
+test("newWeekState assigns correct weekday names", () => {
+  // 7/20/2026 is a Monday
+  const state = newWeekState("7/20", 5);
+  assert.strictEqual(state.days[0].weekday, "Mon");
+  assert.strictEqual(state.days[4].weekday, "Fri");
+});
 test("full week matches example format structure", () => {
   const state = newWeekState("7/13", 5);
   const [d1] = state.days;
