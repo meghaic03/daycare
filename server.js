@@ -42,10 +42,11 @@ if (state) {
 app.post("/whatsapp", async (req, res) => {
   const from = req.body.From; // e.g. "whatsapp:+12035551234"
   const body = (req.body.Body || "").trim();
+  console.log(`Incoming message from ${from}: "${body}"`);
 
   // Basic allowlist so random numbers can't mess with the schedule.
   if (OWNER_WHATSAPP_NUMBER && from !== OWNER_WHATSAPP_NUMBER) {
-    console.log(`Ignored message from unrecognized number: ${from}`);
+    console.log(`Ignored — expected OWNER_WHATSAPP_NUMBER="${OWNER_WHATSAPP_NUMBER}" but got From="${from}"`);
     res.status(200).end();
     return;
   }
@@ -56,13 +57,17 @@ app.post("/whatsapp", async (req, res) => {
     if (/^reset week/i.test(body)) {
       state = newWeekState(nextSunday());
       saveState(state);
+      console.log("Week reset.");
       await send(from, "Started a fresh week. Tell me kid counts and any changes whenever you're ready.");
       return;
     }
 
+    console.log("Calling Claude to parse the message...");
     const actions = await parseInstruction(body, state);
+    console.log("Parsed actions:", JSON.stringify(actions));
 
     if (actions.length === 0) {
+      console.log("No actions parsed — sending help message.");
       await send(
         from,
         `I didn't catch anything I could act on. You can tell me things like:\n"12 kids on Wednesday"\n"MWF I need 3 workers"\n"Muslima off Thursday"\n"send the schedule"\n"send pay"`
@@ -72,21 +77,30 @@ app.post("/whatsapp", async (req, res) => {
 
     const replies = applyActions(state, actions);
     saveState(state); // persist immediately — before replying, so a crash after this point loses nothing
+    console.log(`Sending ${replies.length} reply message(s)...`);
     for (const r of replies) {
       await send(from, r.text);
     }
+    console.log("Done.");
   } catch (err) {
-    console.error(err);
+    console.error("ERROR handling message:", err);
     await send(from, "Something went wrong on my end — try again in a minute, or tell me and I'll get it fixed.");
   }
 });
 
 async function send(to, text) {
-  await twilioClient.messages.create({
-    from: TWILIO_WHATSAPP_NUMBER,
-    to,
-    body: text,
-  });
+  console.log(`Sending WhatsApp message to ${to}: "${text.slice(0, 60)}..."`);
+  try {
+    const msg = await twilioClient.messages.create({
+      from: TWILIO_WHATSAPP_NUMBER,
+      to,
+      body: text,
+    });
+    console.log(`Sent OK, Twilio SID: ${msg.sid}`);
+  } catch (err) {
+    console.error("FAILED to send WhatsApp message:", err.message);
+    throw err;
+  }
 }
 
 const port = PORT || 3000;
